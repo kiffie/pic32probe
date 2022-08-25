@@ -1,0 +1,10 @@
+[package]
+name = "usb-log"
+version = "0.1.0"
+edition = "2021"
+authors = ["Stephan <kiffie@mailbox.org>"]
+license = "GPL-2.0-or-later"
+
+[dependencies]
+log = "0.4.14"
+usb-device = "0.2.8"

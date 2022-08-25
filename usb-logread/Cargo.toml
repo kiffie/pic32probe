@@ -1,0 +1,9 @@
+[package]
+name = "usb-logread"
+version = "0.1.0"
+edition = "2021"
+authors = ["Stephan <kiffie@mailbox.org>"]
+license = "GPL-2.0-or-later"
+
+[dependencies]
+libusb = "0.3.0"
