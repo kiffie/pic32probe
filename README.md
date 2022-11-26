@@ -1,5 +1,7 @@
 # Pic32Probe
 
+<img src="https://raw.githubusercontent.com/kiffie/pic32probe/master/pinout-qtpy-rp2040.jpg" alt="pinout for RP2040 breakout board" width="400">
+
 This is an ICSP (2-wire) dongle for flashing PIC32 microcontrollers implemented on an Raspberry Pi RP2040 microcontroller. Use a simple RP2040 breakout board to flash PIC32 devices. The target Vdd must be 3.3 V.
 
 An USB UART is implemented to connect to a (debug) UART of the target.
