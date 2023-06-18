@@ -276,7 +276,7 @@ impl<P: PIOExt> Rp2040Comm<P> {
             .out_pins(self.pged, 1)
             .set_pins(self.pged, 1)
             .side_set_pin_base(self.pgec)
-            .clock_divisor(clock_div as f32)
+            .clock_divisor_fixed_point(clock_div as u16, 0)
             .autopull(true)
             .pull_threshold(2)
             .autopush(false)
@@ -538,7 +538,6 @@ impl<P: PIOExt> IcspStateMachine<P> {
                 delay: 0,
                 side_set: Some(1),
             }
-            .encode(pio::SideSet::new(false, 1, false)),
         );
         // fetch one word from the RX FIFO
         loop {

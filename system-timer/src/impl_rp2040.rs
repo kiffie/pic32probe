@@ -10,10 +10,10 @@ use core::ops::{Add, AddAssign};
 
 //use rp2040_hal::pac::TIMER;
 use rp2040_hal::pac::Interrupt;
-use rp2040_hal::timer::{Alarm0, Timer, ScheduleAlarmError};
+use rp2040_hal::timer::{Alarm, Alarm0, Timer, ScheduleAlarmError};
 use rp2040_hal::pac::interrupt;
 
-use embedded_time::duration::*;
+use fugit::ExtU32;
 
 use cortex_m::asm;
 use cortex_m::interrupt::free as irq_free;
@@ -60,7 +60,7 @@ impl SystemTimer {
     pub fn free() -> (Timer, Alarm0) {
         irq_free(|cs| {
             let mut st = SYSTEM_TIMER.borrow(cs).borrow_mut().take().unwrap();
-            st.alarm.disable_interrupt(&mut st.timer);
+            st.alarm.disable_interrupt();
             (st.timer, st.alarm)
         })
     }
@@ -101,11 +101,10 @@ impl SystemTimer {
         irq_free(|cs| {
             let mut stb = SYSTEM_TIMER.borrow(cs).borrow_mut();
             let st = stb.as_mut().unwrap();
-            st.alarm.enable_interrupt(&mut st.timer);
-            st.alarm.schedule(Microseconds(delta as u32))
+            st.alarm.enable_interrupt();
+            st.alarm.schedule((delta as u32).micros())
                 .map_err(|e| match e {
-                    ScheduleAlarmError::AlarmTooSoon => Error::InstantTooEarly,
-                    _ => Error::InternalError,
+                    ScheduleAlarmError::AlarmTooLate => Error::InstantTooLate,
                 })
         })
     }
@@ -117,7 +116,7 @@ impl Instant {
         irq_free(|cs| {
             let stb = SYSTEM_TIMER.borrow(cs).borrow();
             let st = stb.as_ref().unwrap();
-            Instant { ticks: st.timer.get_counter() }
+            Instant { ticks: st.timer.get_counter().ticks() }
         })
     }
 }
@@ -147,7 +146,7 @@ fn TIMER_IRQ_0() {
     irq_free(|cs| {
         let mut stb = SYSTEM_TIMER.borrow(cs).borrow_mut();
         let st = stb.as_mut().unwrap();
-        st.alarm.clear_interrupt(&mut st.timer);
+        st.alarm.clear_interrupt();
     });
 
 }

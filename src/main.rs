@@ -18,14 +18,14 @@ use hal::{
     gpio::{FunctionPio0, FunctionUart},
     pac,
     sio::Sio,
-    uart::{self, DataBits, StopBits, UartConfig, UartPeripheral},
+    uart::{DataBits, StopBits, UartConfig, UartPeripheral},
     usb::UsbBus,
     watchdog::Watchdog,
     Timer,
 };
 use rp2040_hal as hal;
 
-use embedded_time::rate::Baud;
+use fugit::RateExtU32;
 use usb_device::class_prelude::UsbBusAllocator;
 use usbd_serial::SerialPort;
 
@@ -54,8 +54,8 @@ fn main() -> ! {
     //let up_write = channels.up.0;
     unsafe {
         log::set_logger_racy(&LOGGER).unwrap();
+        log::set_max_level_racy(LevelFilter::Debug);
     }
-    log::set_max_level(LevelFilter::Debug);
 
     info!("PIC32probe v{}", env!("CARGO_PKG_VERSION"));
     info!("Build: {}", env!("BUILD_DATETIME"));
@@ -147,14 +147,16 @@ fn main() -> ! {
             //let button_pin = pins.gpio21.into_pull_up_input();
 
             // UART
-            let mut uart = UartPeripheral::new(pac.UART1, &mut pac.RESETS)
+            let uart_pins = (
+                pins.gpio20.into_mode::<FunctionUart>(), // TX
+                pins.gpio5.into_mode::<FunctionUart>(), // RX
+            );
+            let mut uart = UartPeripheral::new(pac.UART1, uart_pins, &mut pac.RESETS)
                 .enable(
-                    uart::common_configs::_115200_8_N_1,
+                    UartConfig::new(115200u32.Hz(), DataBits::Eight, None, StopBits::One),
                     clocks.peripheral_clock.freq(),
                 )
                 .unwrap();
-                let _txd_pin = pins.gpio20.into_mode::<FunctionUart>();
-                let mut rxd_pin = pins.gpio5.into_mode::<FunctionUart>();
         } else {
             compile_error!("no board selected");
         }
@@ -222,24 +224,14 @@ fn main() -> ! {
         if serial_class.line_coding().data_rate() != baudrate {
             baudrate = serial_class.line_coding().data_rate();
             if baudrate >= 8000 {
-                (uart, rxd_pin) = {
-                    // RP2040 UART quirk: the UART does not function correctly when reconfigured
-                    // while receiving data. Therefore, the RX pin is disconnected from the UART
-                    // during reconfiguration.
-                    let floating_input = rxd_pin.into_floating_input();
+                uart = {
                     let disabled = uart.disable();
-                    let config = UartConfig {
-                        baudrate: Baud(baudrate),
-                        data_bits: DataBits::Eight,
-                        stop_bits: StopBits::One,
-                        parity: None,
-                    };
-                    (
-                        disabled
-                            .enable(config, clocks.peripheral_clock.freq())
-                            .unwrap(),
-                        floating_input.into_mode::<FunctionUart>(),
-                    )
+                    let config = UartConfig::new(
+                        baudrate.Hz(),
+                        DataBits::Eight,
+                        None,
+                        StopBits::One);
+                    disabled.enable(config, clocks.peripheral_clock.freq()).unwrap()
                 };
                 info!("changed UART baudrate to {baudrate}");
             } else {

@@ -22,11 +22,11 @@ adafruit_qt = []
 cortex-m = "0.7.3"
 cortex-m-rt = "0.7.0"
 cfg-if = "1.0.0"
-rp2040-hal = { version="0.3.0", features=["rt"] }
-pio = "0.1.0"
-rp2040-boot2 = "0.2.0"
+rp2040-hal = { version="0.8", features=["rt", "critical-section-impl"] }
+pio = "0.2.1"
+rp2040-boot2 = "0.3.0"
 embedded-hal = "0.2.7"
-embedded-time = "0.12.1"
+fugit = "0.3.7"
 panic-persist = { version = "0.3.0", features = ["utf8"] }
 usb-log = { path = "usb-log" }
 system-timer = { path = "system-timer", features = ["rp2040"] }

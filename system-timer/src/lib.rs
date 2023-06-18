@@ -27,6 +27,7 @@ pub use core::time::Duration;
 #[derive(Debug)]
 pub enum Error {
     InstantTooEarly,
+    InstantTooLate,
     InternalError,
 }
 
