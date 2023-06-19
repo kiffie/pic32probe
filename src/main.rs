@@ -6,11 +6,11 @@
 #![no_std]
 #![no_main]
 
+use cfg_if::cfg_if;
 use core::cmp::min;
 use cortex_m::interrupt;
 use cortex_m_rt::entry;
 use log::{debug, error, info, LevelFilter};
-use cfg_if::cfg_if;
 use panic_persist as _;
 
 use hal::{
@@ -29,12 +29,15 @@ use fugit::RateExtU32;
 use usb_device::class_prelude::UsbBusAllocator;
 use usbd_serial::SerialPort;
 
-use usb_log::{log_buffer::LogBuffer, usb_log_channel::UsbLogChannel};
 use system_timer::SystemTimer;
+use usb_log::{log_buffer::LogBuffer, usb_log_channel::UsbLogChannel};
 
 use usb_device::prelude::*;
 
 mod probe;
+
+mod rp2040_uart_hack;
+use rp2040_uart_hack::UartConfigExt;
 
 mod adapter;
 use adapter::Pic32Adapter;
@@ -223,19 +226,9 @@ fn main() -> ! {
 
         if serial_class.line_coding().data_rate() != baudrate {
             baudrate = serial_class.line_coding().data_rate();
-            if baudrate >= 8000 {
-                uart = {
-                    let disabled = uart.disable();
-                    let config = UartConfig::new(
-                        baudrate.Hz(),
-                        DataBits::Eight,
-                        None,
-                        StopBits::One);
-                    disabled.enable(config, clocks.peripheral_clock.freq()).unwrap()
-                };
-                info!("changed UART baudrate to {baudrate}");
-            } else {
-                info!("Baudrate {baudrate} too low; not changed");
+            match uart.set_baudrate(baudrate.Hz(), clocks.peripheral_clock.freq()) {
+                Err(_) => info!("Baudrate {baudrate} out of range; not changed"),
+                Ok(real) => info!(" Baudrate changed: requested = {baudrate}, real = {real}"),
             }
         }
 
