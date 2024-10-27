@@ -22,7 +22,7 @@ adafruit_qt = []
 cortex-m = "0.7.3"
 cortex-m-rt = "0.7.0"
 cfg-if = "1.0.0"
-rp2040-hal = { version="0.8", features=["rt", "critical-section-impl"] }
+rp2040-hal = { version="0.9", features=["rt", "critical-section-impl"] }
 pio = "0.2.1"
 rp2040-boot2 = "0.3.0"
 embedded-hal = "0.2.7"
@@ -32,13 +32,13 @@ usb-log = { path = "usb-log" }
 system-timer = { path = "system-timer", features = ["rp2040"] }
 usb-device = { version = "0.2.8", features = ["control-buffer-256"] }
 usbd-serial = "0.1.1"
-heapless = "0.7.10"
+heapless = "0.8.0"
 byteorder = { version = "1.4.3", default-features = false }
 
-log = "0.4.14"
+log = "0.4"
 
 [build-dependencies]
-chrono = "0.4.19"
+chrono = "0.4"
 
 [profile.release]
 #opt-level = "s"

@@ -16,8 +16,7 @@
 //! ```
 //!
 //! Messages must start at USB packet boundaries. A message can span multiple
-//! USB packets. Transport directly over bulk endpoints or as over HID is
-//! possible.
+//! USB packets. Transport directly over bulk endpoints or over HID is possible.
 //!
 //! ## Request Codes
 //!
@@ -580,7 +579,7 @@ static PIC32_PEMM_LOADER: [u32; 14] = [
     0x69e06a60,
     0x000c94e3,
     0x8dfa0c00,
-    0x69500c00,	// Super secret not shown in the OpCode column instruction.
+    0x69500c00,	// not shown in the OpCode column instruction
     0xe9406dbe,
     0xadfb6e42,
     0xcff20c00,

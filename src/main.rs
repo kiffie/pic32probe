@@ -89,7 +89,7 @@ fn main() -> ! {
     }
 
     // System timer
-    let timer = Timer::new(pac.TIMER, &mut pac.RESETS);
+    let timer = Timer::new(pac.TIMER, &mut pac.RESETS, &clocks);
     unsafe {
         SystemTimer::init(timer);
     }
@@ -133,9 +133,10 @@ fn main() -> ! {
             let mut rxd_pin = pins.gpio5.into_mode::<FunctionUart>();
         } else if #[cfg(feature = "adafruit_qt")] {
             info!("Target board: Adafruit QT Py RP2040");
-            let _pgec = pins.gpio6.into_mode::<FunctionPio0>();
-            let _pged = pins.gpio4.into_mode::<FunctionPio0>();
-            let _mclr = pins.gpio3.into_mode::<FunctionPio0>();
+            let _pgec = pins.gpio6.into_function::<FunctionPio0>();
+            let _pged = pins.gpio4.into_function::<FunctionPio0>();
+            let _mclr = pins.gpio3.into_function::<FunctionPio0>();
+
 
             // enable weak pull-up for MCLR pin
             let pad = unsafe { pac::Peripherals::steal() };
@@ -151,8 +152,8 @@ fn main() -> ! {
 
             // UART
             let uart_pins = (
-                pins.gpio20.into_mode::<FunctionUart>(), // TX
-                pins.gpio5.into_mode::<FunctionUart>(), // RX
+                pins.gpio20.into_function::<FunctionUart>(), // TX
+                pins.gpio5.into_function::<FunctionUart>(), // RX
             );
             let mut uart = UartPeripheral::new(pac.UART1, uart_pins, &mut pac.RESETS)
                 .enable(
