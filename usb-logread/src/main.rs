@@ -1,19 +1,26 @@
 //! USB Log Reader
 //!
-//! Looks for device having an interface named 'kiffielog' and having an USB
-//! bulk IN EP. Then copies all bytes from the endpoint to stdout.
+//! Looks for device having an interface named 'kiffielog' by default and having
+//! an USB bulk IN EP. Then copies all bytes from the endpoint to stdout.
 //!
-// Copyright (C) 2022 Stephan <kiffie@mailbox.org>
-// SPDX-License-Identifier: GPL-2.0-or-later
 
-use libusb::{Context, Device, Direction};
+use clap::Parser;
+use rusb::{Context, Device, Direction, UsbContext};
 use std::io::Write;
 use std::process::exit;
 use std::time::Duration;
 
 const TIMEOUT: Duration = Duration::from_millis(100);
 
-fn check_device(dev: &Device, label: &str) -> libusb::Result<Option<(u8, u8)>> {
+#[derive(Parser)]
+#[command(about = "Reads USB log channel")]
+struct Args {
+    /// Log interface name
+    #[clap(short = 'i', long = "interface-name", default_value = "kiffielog")]
+    interface: String,
+}
+
+fn check_device(dev: &Device<Context>, label: &str) -> rusb::Result<Option<(u8, u8)>> {
     let handle = match dev.open() {
         Ok(h) => h,
         Err(_) => return Ok(None),
@@ -39,12 +46,9 @@ fn check_device(dev: &Device, label: &str) -> libusb::Result<Option<(u8, u8)>> {
 }
 
 /// Returns Vector of (Device, interface_no, endpoint_addr)
-fn find_endpoints<'a>(
-    context: &'a Context,
-    label: &str,
-) -> libusb::Result<Vec<(Device<'a>, u8, u8)>> {
+fn find_endpoints(context: &Context, label: &str) -> rusb::Result<Vec<(Device<Context>, u8, u8)>> {
     let mut res = vec![];
-    let dev_list = context.devices()?;
+    let dev_list = context.devices().unwrap();
     let mut dev_iter = dev_list.iter();
     loop {
         let found_device;
@@ -62,8 +66,9 @@ fn find_endpoints<'a>(
 }
 
 fn main() {
+    let args: Args = Args::parse();
     let context = Context::new().unwrap();
-    let found = find_endpoints(&context, "kiffielog").unwrap();
+    let found = find_endpoints(&context, args.interface.as_str()).unwrap();
     if found.is_empty() {
         eprintln!("no log channel interface found");
         exit(1);
@@ -75,18 +80,20 @@ fn main() {
     let dev_desc = dev.device_descriptor().unwrap();
     let vid = dev_desc.vendor_id();
     let pid = dev_desc.product_id();
-    let mut handle = dev.open().unwrap();
+    let handle = dev.open().unwrap();
     handle.claim_interface(*iface_id).unwrap();
 
     let mut stdout = std::io::stdout();
-    println!("Reading USB log channel from device {vid:04x}:{pid:04x}, Endpoint 0x{ep_addr:02x}");
+    let bus = dev.bus_number();
+    let addr = dev.address();
+    println!("Reading USB log channel from device {vid:04x}:{pid:04x} on bus {bus} at address {addr}, EP 0x{ep_addr:02x}");
     loop {
         let mut buf = [0; 1024];
         match handle.read_bulk(*ep_addr, &mut buf, TIMEOUT) {
             Ok(len) => {
                 stdout.write_all(&buf[..len]).unwrap();
             }
-            Err(libusb::Error::Timeout) => (),
+            Err(rusb::Error::Timeout) => (),
             Err(e) => {
                 eprintln!("Error in Reading from USB: {e}");
                 exit(1);

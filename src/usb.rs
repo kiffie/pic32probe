@@ -70,7 +70,7 @@ impl<B: UsbBus> UsbClass<B> for ProbeClass<'_, B> {
         writer.endpoint(&self.ep_out)
     }
 
-    fn get_string(&self, index: StringIndex, _lang_id: u16) -> Option<&str> {
+    fn get_string(&self, index: StringIndex, _lang_id: LangID) -> Option<&str> {
         if index == self.iface_string {
             Some("pic32probe")
         } else {

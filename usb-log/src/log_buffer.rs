@@ -5,7 +5,8 @@
 
 use core::cell::RefCell;
 use core::fmt::Write;
-use log::{Level, Metadata, Record};
+use critical_section::Mutex;
+use log::{Metadata, Record};
 
 struct LogBufferInner<const N: usize> {
     wr: usize,
@@ -14,7 +15,6 @@ struct LogBufferInner<const N: usize> {
 }
 
 impl<const N: usize> LogBufferInner<N> {
-
     const fn new() -> LogBufferInner<N> {
         LogBufferInner {
             wr: 0,
@@ -24,7 +24,7 @@ impl<const N: usize> LogBufferInner<N> {
     }
 
     /// Write a byte
-    /// 
+    ///
     /// Returns an error if buffer is full
     fn write(&mut self, byte: u8) -> Result<(), ()> {
         if Self::inc_mod_n(self.wr) != self.rd {
@@ -38,7 +38,7 @@ impl<const N: usize> LogBufferInner<N> {
     }
 
     /// Read a byte
-    /// 
+    ///
     /// Returns None if LogBuffer is empty
     pub fn read(&mut self) -> Option<u8> {
         if self.wr != self.rd {
@@ -48,6 +48,11 @@ impl<const N: usize> LogBufferInner<N> {
         } else {
             None
         }
+    }
+
+    /// Returns true if LogBuffer is empty
+    pub fn is_empty(&self) -> bool {
+        self.wr == self.rd
     }
 
     fn inc_mod_n(val: usize) -> usize {
@@ -60,29 +65,36 @@ impl<const N: usize> LogBufferInner<N> {
 }
 
 pub struct LogBuffer<const N: usize> {
-    inner: RefCell<LogBufferInner<N>>,
+    inner: Mutex<RefCell<LogBufferInner<N>>>,
 }
 
 impl<const N: usize> LogBuffer<N> {
-
+    #[allow(clippy::new_without_default)]
     pub const fn new() -> LogBuffer<N> {
-        LogBuffer { inner: RefCell::new(LogBufferInner::new()) }
+        LogBuffer {
+            inner: Mutex::new(RefCell::new(LogBufferInner::new())),
+        }
     }
 
     /// Read a byte
-    /// 
+    ///
     /// Returns None if LogBuffer is empty
     pub fn read(&self) -> Option<u8> {
-        let mut inner = self.inner.borrow_mut();
-        inner.read()
+        critical_section::with(|cs| {
+            let mut inner = self.inner.borrow(cs).borrow_mut();
+            inner.read()
+        })
     }
 
+    /// Returns true if LogBuffer is empty
+    pub fn is_empty(&self) -> bool {
+        critical_section::with(|cs| self.inner.borrow(cs).borrow().is_empty())
+    }
 }
 
 impl<const N: usize> Write for LogBufferInner<N> {
-
     /// Write a string slice
-    /// 
+    ///
     /// If the buffer is full then the respective characters of the string slice are discarded
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         for byte in s.bytes() {
@@ -94,40 +106,57 @@ impl<const N: usize> Write for LogBufferInner<N> {
     }
 }
 
-unsafe impl<const N: usize> Sync for LogBuffer<N> {}
-unsafe impl<const N: usize> Send for LogBuffer<N> {}
-
 impl<const N: usize> log::Log for LogBuffer<N> {
-    fn enabled(&self, metadata: &Metadata) -> bool {
-        metadata.level() <= Level::Debug
+    fn enabled(&self, _metadata: &Metadata) -> bool {
+        true
     }
 
     fn log(&self, record: &Record) {
-        let mut inner = self.inner.borrow_mut();
-        if self.enabled(record.metadata()) {
-            let _ = writeln!(
-                inner,
-                "[{}:{}] {}",
-                record.file().unwrap_or("???"),
-                record.line().unwrap_or(0),
-                record.args()
-            );
-        }
+        const MAX_FILE_LEN: usize = 32;
+        critical_section::with(|cs| {
+            let mut inner = self.inner.borrow(cs).borrow_mut();
+            if self.enabled(record.metadata()) {
+                if record.target() == "PANIC" {
+                    writeln!(inner, "[PANIC] {}", record.args()).ok();
+                } else {
+                    let (prefix, file) = if let Some(f) = record.file_static() {
+                        if f.len() <= MAX_FILE_LEN {
+                            ("", f)
+                        } else {
+                            ("...", &f[f.len() - MAX_FILE_LEN..])
+                        }
+                    } else {
+                        ("???", "")
+                    };
+                    writeln!(
+                        inner,
+                        "[{}{}:{}] {}",
+                        prefix,
+                        file,
+                        record.line().unwrap_or(0),
+                        record.args()
+                    )
+                    .ok();
+                }
+            }
+        });
     }
 
     fn flush(&self) {}
 }
 
-// #[panic_handler]
-// fn panic(panic_info: &PanicInfo<'_>) -> ! {
-//     if let Some(s) = panic_info.message() {
-//         error!("Panic: {:?}", s);
-//     } else {
-//         error!("Panic");
-//     }
-//     if let Some(l) = panic_info.location() {
-//         error!("location: [{}:{}]", l.file(), l.line());
-//     }
-//     error!("entering endless loop.");
-//     loop {}
-// }
+#[cfg(feature = "panic-handler")]
+use core::panic::PanicInfo;
+#[cfg(feature = "panic-handler")]
+use log::error;
+
+#[cfg(feature = "panic-handler")]
+#[panic_handler]
+fn panic(panic_info: &PanicInfo<'_>) -> ! {
+    if let Some(l) = panic_info.location() {
+        error!(target: "PANIC", "at {}:{}", l.file(), l.line());
+    }
+    error!(target: "PANIC", "{}", panic_info.message());
+    error!(target: "PANIC", "entering endless loop.");
+    loop {}
+}

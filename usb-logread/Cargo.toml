@@ -2,8 +2,7 @@
 name = "usb-logread"
 version = "0.1.0"
 edition = "2021"
-authors = ["Stephan <kiffie@mailbox.org>"]
-license = "GPL-2.0-or-later"
 
 [dependencies]
-libusb = "0.3.0"
+clap = { version = "4.5.23", features = ["derive"] }
+rusb = "0.9.4"

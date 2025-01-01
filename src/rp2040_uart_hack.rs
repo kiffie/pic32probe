@@ -62,20 +62,20 @@ fn configure_baudrate<U: UartDevice>(
     let (baud_div_int, baud_div_frac) = calculate_baudrate_dividers(wanted_baudrate, frequency)?;
 
     // First we load the integer part of the divider.
-    device.uartibrd.write(|w| unsafe {
+    device.uartibrd().write(|w| unsafe {
         w.baud_divint().bits(baud_div_int);
         w
     });
 
     // Then we load the fractional part of the divider.
-    device.uartfbrd.write(|w| unsafe {
+    device.uartfbrd().write(|w| unsafe {
         w.baud_divfrac().bits(baud_div_frac as u8);
         w
     });
 
     // PL011 needs a (dummy) line control register write to latch in the
     // divisors. We don't want to actually change LCR contents here.
-    device.uartlcr_h.modify(|_, w| w);
+    device.uartlcr_h().modify(|_, w| w);
 
     Ok(HertzU32::from_raw(
         (4 * frequency.to_Hz()) / (64 * baud_div_int as u32 + baud_div_frac as u32),

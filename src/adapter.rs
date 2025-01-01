@@ -32,7 +32,7 @@ use crate::probe::{self, ejtag_control, mtap_status, JtagCommand, MtapCommand, P
 
 use byteorder::{ByteOrder, LittleEndian as LE};
 use log::debug;
-use system_timer::{Duration, Instant, SystemTimer};
+use system_timer::{Duration, SystemTimer, SystemTimerOps};
 
 #[repr(u16)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -185,10 +185,11 @@ impl<C: Pic32Comm> Pic32Adapter<C> {
     /// Returns Ok(None) in case of read access without completing that read access
     fn get_pe_response(&mut self) -> Result<Option<u32>, ResponseCode> {
         assert!(self.mode == Mode::ProgrammingExecutive);
+        let st = SystemTimer::new();
 
         // Wait for processor access
         self.comm.send_command(JtagCommand::EtapControl);
-        let timeout = Instant::now() + Duration::from_millis(1000);
+        let timeout = st.now() + Duration::millis(1000);
         loop {
             let control = self.comm.xfer_data_u32(
                 ejtag_control::PRACC | ejtag_control::PROBEN | ejtag_control::PROBTRAP,
@@ -199,7 +200,7 @@ impl<C: Pic32Comm> Pic32Adapter<C> {
                 }
                 break;
             }
-            if Instant::now() >= timeout {
+            if st.now() >= timeout {
                 return Err(ResponseCode::Timeout);
             }
         }
@@ -387,6 +388,7 @@ impl<C: Pic32Comm> Pic32Adapter<C> {
         if self.mode != Mode::ProgrammingExecutive {
             return Err(ResponseCode::ExecutiveNotLoaded);
         }
+        let mut st = SystemTimer::new();
         debug!("PE transaction: in: {} bytes", command.len());
         //debug!("PE in: {:?}", command);
         self.comm.run_test_idle();
@@ -408,7 +410,7 @@ impl<C: Pic32Comm> Pic32Adapter<C> {
         // Only needed for programming certain configuration words but we do after every
         // PE transaction.
         self.comm.send_command(JtagCommand::MtapSwMtap);
-        SystemTimer::wait(Duration::from_micros(400));
+        st.wait(Duration::micros(400));
         self.comm.send_command(JtagCommand::MtapSwEtap);
 
         let mut resp_iter = response.iter_mut();
@@ -436,7 +438,7 @@ impl<C: Pic32Comm> Pic32Adapter<C> {
     /// Panics if response is too short
     pub fn process(&mut self, request: &[u8], response: &mut [u8]) -> usize {
         debug!("process: request, len = {}", request.len());
-
+        let mut st = SystemTimer::new();
         fn response_header(response: &mut [u8], code: ResponseCode, len: u16) -> usize {
             LE::write_u16(&mut response[0..], code.into());
             LE::write_u16(&mut response[2..], len);
@@ -513,7 +515,7 @@ impl<C: Pic32Comm> Pic32Adapter<C> {
             self.comm.xfer_data_u8(MtapCommand::DeassertReset.into());
             let mut ctr = 1000;
             loop {
-                SystemTimer::wait(Duration::from_millis(10));
+                st.wait(Duration::millis(10));
                 let status = self.comm.xfer_data_u8(MtapCommand::Status.into());
                 if status & mtap_status::FCBUSY == 0 && status & mtap_status::CFGRDY != 0 {
                     break;

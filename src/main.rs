@@ -90,9 +90,7 @@ fn main() -> ! {
 
     // System timer
     let timer = Timer::new(pac.TIMER, &mut pac.RESETS, &clocks);
-    unsafe {
-        SystemTimer::init(timer);
-    }
+    SystemTimer::init(timer);
 
     let pins = hal::gpio::Pins::new(
         pac.IO_BANK0,
@@ -111,9 +109,9 @@ fn main() -> ! {
             // enable weak pull-up for MCLR pin
             let pad = unsafe { pac::Peripherals::steal() };
             pad.PADS_BANK0.gpio[6].write(|w| w.pde().bit(false).pue().bit(true));
-            debug!("pad GPIO2: {:08x}", pad.PADS_BANK0.gpio[2].read().bits());
-            debug!("pad GPIO3: {:08x}", pad.PADS_BANK0.gpio[3].read().bits());
-            debug!("pad GPIO6: {:08x}", pad.PADS_BANK0.gpio[6].read().bits());
+            debug!("pad GPIO2: {:08x}", pad.PADS_BANK0.gpio(2).read().bits());
+            debug!("pad GPIO3: {:08x}", pad.PADS_BANK0.gpio(3).read().bits());
+            debug!("pad GPIO6: {:08x}", pad.PADS_BANK0.gpio(6).read().bits());
 
             let probe = probe::Rp2040Comm::new(pac.PIO0, 3, 2, 6, &mut pac.RESETS);
             let mut adapter = Pic32Adapter::new(probe);
@@ -140,10 +138,10 @@ fn main() -> ! {
 
             // enable weak pull-up for MCLR pin
             let pad = unsafe { pac::Peripherals::steal() };
-            pad.PADS_BANK0.gpio[3].write(|w| w.pde().bit(false).pue().bit(true));
-            debug!("pad GPIO3: {:08x}", pad.PADS_BANK0.gpio[3].read().bits());
-            debug!("pad GPIO4: {:08x}", pad.PADS_BANK0.gpio[4].read().bits());
-            debug!("pad GPIO6: {:08x}", pad.PADS_BANK0.gpio[6].read().bits());
+            pad.PADS_BANK0.gpio(3).write(|w| w.pde().bit(false).pue().bit(true));
+            debug!("pad GPIO3: {:08x}", pad.PADS_BANK0.gpio(3).read().bits());
+            debug!("pad GPIO4: {:08x}", pad.PADS_BANK0.gpio(4).read().bits());
+            debug!("pad GPIO6: {:08x}", pad.PADS_BANK0.gpio(6).read().bits());
 
             let probe = probe::Rp2040Comm::new(pac.PIO0, 6, 4, 3, &mut pac.RESETS);
             let mut adapter = Pic32Adapter::new(probe);
@@ -179,8 +177,11 @@ fn main() -> ! {
 
     let mut usb_dev = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x16c0, 0x05dc))
         .max_packet_size_0(64)
-        .manufacturer("Kiffie Labs https://github.com/kiffie")
-        .product("Pic32Probe")
+        .unwrap()
+        .strings(&[StringDescriptors::new(LangID::EN)
+            .manufacturer("Kiffie Labs https://github.com/kiffie")
+            .product("Pic32Probe")])
+        .unwrap()
         .build();
 
     let mut response = [0u8; 1024];

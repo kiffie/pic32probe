@@ -3,16 +3,15 @@
 // Copyright (C) 2022 Stephan <kiffie@mailbox.org>
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-use core::time::Duration;
 use log::debug;
 use rp2040_hal::pac::RESETS;
 use rp2040_hal::pio::{
     InstalledProgram, PIOBuilder, PIOExt, PinDir, PinState, Running, Rx, ShiftDirection,
     StateMachine, Stopped, Tx, UninitStateMachine, SM0,
 };
-use system_timer::{Instant, SystemTimer};
+use system_timer::{Duration, SystemTimer, SystemTimerOps};
 
-const PRACC_TIMEOUT: Duration = Duration::from_millis(1000);
+const PRACC_TIMEOUT: Duration = Duration::millis(1000);
 
 #[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
@@ -53,13 +52,14 @@ pub trait Pic32Comm {
     /// The core must be executing from dmseg memory and the EJTAG TAP must be selected.
     fn xfer_instruction(&mut self, instruction: u32) -> Result<()> {
         self.send_command(JtagCommand::EtapControl);
-        let timeout = Instant::now() + PRACC_TIMEOUT;
+        let st = SystemTimer::new();
+        let timeout = st.now() + PRACC_TIMEOUT;
         loop {
             let control = self.xfer_data_u32(0x0004c000);
             if control & ejtag_control::PRACC != 0 {
                 break;
             }
-            if Instant::now() >= timeout {
+            if st.now() >= timeout {
                 debug!("timeout, control = {control:08x}");
                 return Err(Error::FastDataTimeout);
             }
@@ -190,8 +190,8 @@ pub mod ejtag_control {
     pub const DM: u32 = 1 << 3;
 }
 
-const RESET_DELAY: Duration = Duration::from_millis(1);
-const XFER_DELAY: Duration = Duration::from_micros(5);
+const RESET_DELAY: Duration = Duration::millis(1);
+const XFER_DELAY: Duration = Duration::micros(5);
 
 pub struct Rp2040Comm<P: PIOExt> {
     pgec: u8,
@@ -271,7 +271,7 @@ impl<P: PIOExt> Rp2040Comm<P> {
         );
         let wrap_target = prog.wrap_target();
 
-        let (mut stopped, rx, tx) = PIOBuilder::from_program(prog)
+        let (mut stopped, rx, tx) = PIOBuilder::from_installed_program(prog)
             .in_pin_base(self.pged)
             .out_pins(self.pged, 1)
             .set_pins(self.pged, 1)
@@ -320,6 +320,7 @@ impl<P: PIOExt> Rp2040Comm<P> {
 
 impl<P: PIOExt> Pic32Comm for Rp2040Comm<P> {
     fn iscp_connect_key_sequence(&mut self, icsp_clock_hz: u32) {
+        let mut st = SystemTimer::new();
         let (mut stopped, rx, tx, wrap_target) = self.reinit_sm(icsp_clock_hz);
         stopped.set_pins([(self.pgec, PinState::Low), (self.mclr, PinState::High)]);
         stopped.set_pindirs([
@@ -327,9 +328,9 @@ impl<P: PIOExt> Pic32Comm for Rp2040Comm<P> {
             (self.pged, PinDir::Output),
             (self.mclr, PinDir::Output),
         ]);
-        SystemTimer::wait(RESET_DELAY);
+        st.wait(RESET_DELAY);
         stopped.set_pins([(self.mclr, PinState::Low)]);
-        SystemTimer::wait(RESET_DELAY);
+        st.wait(RESET_DELAY);
         let mut key_sequence = 0x4d434850u32;
         for _ in 0..=31 {
             let bit = if key_sequence & (1 << 31) != 0 {
@@ -339,18 +340,19 @@ impl<P: PIOExt> Pic32Comm for Rp2040Comm<P> {
             };
             key_sequence <<= 1;
             stopped.set_pins([(self.pgec, PinState::Low), (self.pged, bit)]);
-            SystemTimer::wait(XFER_DELAY);
+            st.wait(XFER_DELAY);
             stopped.set_pins([(self.pgec, PinState::High)]);
-            SystemTimer::wait(XFER_DELAY);
+            st.wait(XFER_DELAY);
         }
         stopped.set_pins([(self.pgec, PinState::Low)]);
-        SystemTimer::wait(RESET_DELAY);
+        st.wait(RESET_DELAY);
         stopped.set_pins([(self.mclr, PinState::High)]);
-        SystemTimer::wait(RESET_DELAY);
+        st.wait(RESET_DELAY);
         self.sm = Some(IcspStateMachine::new(stopped, rx, tx, wrap_target));
     }
 
     fn disconnect(&mut self) {
+        let mut st = SystemTimer::new();
         //let (sm, rx, mut tx) = self.sm.take().unwrap().release();
         let mut sm = self.sm.take().unwrap();
         // go to test logic reset state
@@ -359,17 +361,17 @@ impl<P: PIOExt> Pic32Comm for Rp2040Comm<P> {
         sm.icsp_4phase(true, false);
         sm.icsp_4phase(true, false);
         sm.icsp_4phase(true, false);
-        SystemTimer::wait(RESET_DELAY);
+        st.wait(RESET_DELAY);
 
         let (mut stopped, rx, tx, wrap_target) = sm.release();
         stopped.set_pins([(self.mclr, PinState::Low)]);
-        SystemTimer::wait(XFER_DELAY);
+        st.wait(XFER_DELAY);
         stopped.set_pins([(self.pgec, PinState::High)]);
-        SystemTimer::wait(XFER_DELAY);
+        st.wait(XFER_DELAY);
         stopped.set_pins([(self.pgec, PinState::Low)]);
-        SystemTimer::wait(RESET_DELAY);
+        st.wait(RESET_DELAY);
         stopped.set_pins([(self.mclr, PinState::High)]);
-        SystemTimer::wait(RESET_DELAY);
+        st.wait(RESET_DELAY);
         stopped.set_pindirs([
             (self.pgec, PinDir::Input),
             (self.pged, PinDir::Input),
@@ -451,8 +453,9 @@ impl<P: PIOExt> Pic32Comm for Rp2040Comm<P> {
     }
 
     fn xfer_fastdata(&mut self, data: u32) -> Result<u32> {
+        let st = SystemTimer::new();
         let sm = self.sm.as_mut().unwrap();
-        let timeout = Instant::now() + PRACC_TIMEOUT;
+        let timeout = st.now() + PRACC_TIMEOUT;
         loop {
             sm.icsp_4phase(true, false);
             sm.icsp_4phase(false, false);
@@ -475,7 +478,7 @@ impl<P: PIOExt> Pic32Comm for Rp2040Comm<P> {
             if pracc {
                 return Ok(word);
             }
-            if Instant::now() >= timeout {
+            if st.now() >= timeout {
                 return Err(Error::FastDataTimeout);
             }
         }
@@ -529,16 +532,14 @@ impl<P: PIOExt> IcspStateMachine<P> {
         // wait until all transactions are completed
         while !self.tx.is_empty() || self.sm.instruction_address() != self.wrap_target as u32 {}
         // push ISR to the RX FIFO
-        self.sm.exec_instruction(
-            pio::Instruction {
-                operands: pio::InstructionOperands::PUSH {
-                    if_full: false,
-                    block: false,
-                },
-                delay: 0,
-                side_set: Some(1),
-            }
-        );
+        self.sm.exec_instruction(pio::Instruction {
+            operands: pio::InstructionOperands::PUSH {
+                if_full: false,
+                block: false,
+            },
+            delay: 0,
+            side_set: Some(1),
+        });
         // fetch one word from the RX FIFO
         loop {
             if let Some(word) = self.rx.read() {
